@@ -209,14 +209,6 @@ def main(stdsc):
 
     rooms = []
 
-        #"!cURbafjkfsMDVwdRDQ:matrix.org",  # main
-        #"!HqyIHODmvZcSvOGJqw:matrix.org",  # odd
-        #"!XqBunHwQIXUiqCaoxq:matrix.org",  # dev
-        #"!zOmsiVucpWbRRDjSwe:matrix.org",  # internal
-        #"!vfFxDRtZSSdspfTSEr:matrix.org",  # test
-        #"!pDoZaoxgqWkenMFAyE:matrix.org",  #testing123
-        #"!BbbQBRcbpgRhtyAead:matrix.org"   # oddvar-oddvar.org 1-1 chat
-
     data = {}
 
     size = stdscr.getmaxyx()
