@@ -1,9 +1,15 @@
-import urllib.parse
-import urllib.request
+# -*- coding: utf-8 -*-
+
+import urlparse
+import urllib
+import re
+import requests
 import json
 import time
 import datetime
 import curses
+#sys.path.append("/home/oddvar/src/matrix/matrix-python-sdk/")
+from matrix_client.client import MatrixClient
 #from pprint import pprint
 
 
@@ -117,16 +123,52 @@ def listenForEvent(room, end):
         test = obj["end"]
     return test
 
-
 def listenForMessage(room):
-    global data, stdscr
+    global endTime
+
+    url = (
+        server + '/_matrix/client/api/v1/rooms/' + room +  # lint:ok
+        "/messages"
+    )
+    query_params = {}
+    query_params["access_token"] = access_token
+    query_params["from"] = endTime
+
+    return _send("GET", url, None, query_params)
+
+
+def _send(method, path, content=None, query_params={}, headers={}):
+    method = method.upper()
+    if method not in ["GET", "PUT", "DELETE", "POST"]:
+        raise MatrixError("Unsupported HTTP method: %s" % method)
+
+    headers["Content-Type"] = "application/json"
+    #query_params["access_token"] = access_token
+    #query_params["from"] =  data[room]["endTime"]
+    endpoint = path
+
+    response = requests.request(
+        method, endpoint, params=query_params,
+        data=json.dumps(content), headers=headers
+        , verify=False
+    )
+
+    if response.status_code < 200 or response.status_code >= 300:
+        raise MatrixRequestError(
+            code=response.status_code, content=response.text
+        )
+
+    return response.json()
+
+def listenForMessage2(room):
+    global data, stdscr, endTime
     url = (
         server + '/_matrix/client/api/v1/rooms/' + room +  # lint:ok
         "/messages"
     )
 
     values = {
-        "access_token": access_token, "from": data[room]["endTime"]   # lint:ok
+        "access_token": access_token, "from": endTime   # lint:ok
     }
     url_values = urllib.parse.urlencode(values)
     #print(url_values)
@@ -156,7 +198,7 @@ def processBackFill(backFill):
     if "rooms" in backFill:
         for r in backFill["rooms"]:
             room = r.get("room_id", "unknown")
-            print(room)
+            #print(room)
             if "messages" in r:
                 newMessages = r.get("messages")
                 test = newMessages.get("end")
@@ -171,19 +213,22 @@ def processBackFill(backFill):
                             data[room]["endTime"] = test
 
 
-def processMessage(obj, room):
+def processMessage(obj):
     global data
-    test = data[room]["endTime"]
-    didWeProcessSomethingSuccessfully = False
-    if 'end' in obj:
-        test = obj["end"]
+
+    didWeProcessSomethingSuccessfully = None
+
     if 'chunk' in obj:
         for thing in obj.get("chunk"):
-            temp = data[room]["messages"]["chunk"]
-            temp.append(thing)
-            data[room]["messages"]["chunk"] = temp
-            data[room]["endTime"] = test
-            didWeProcessSomethingSuccessfully = True
+            if "room_id" in thing:
+                room = thing["room_id"]
+                if room not in data:
+                    registerRoom(room)
+                temp = data[room]["messages"]["chunk"]
+                temp.append(thing)
+                data[room]["messages"]["chunk"] = temp
+                #data[room]["endTime"] = test
+                didWeProcessSomethingSuccessfully = room
     return didWeProcessSomethingSuccessfully
 
 
@@ -199,45 +244,145 @@ def registerRoom(roomid):
         #data[roomid]["endTime"] = end  # do this in the function above
 
 
+def incrementalText(string):
+    global incrementalTextOffset, stdscr
+
+    stdscr.addstr(0, incrementalTextOffset, string)
+    stdscr.refresh()
+
+    incrementalTextOffset += len(string)
+
+
+
 def main(stdsc):
-    global size, room, data, stdscr, rooms
+    global size, room, data, stdscr, rooms, access_token, endTime, incrementalTextOffset
 
     stdscr = stdsc
 
+    curses.curs_set(0)
+    curses.use_default_colors()
+
+    incrementalTextOffset = 0
+    incrementalText("loading")
     loadCredentials("credentials")
-    login()
+
+    incrementalText(".")
+    client = MatrixClient(server)
+    incrementalText(".")
+    access_token = client.login_with_password(username=username, password=password)
+    incrementalText(".")
+
+#room = client.create_room("myroom")
+    #room.send_image(file_like_object)
+
+    #Usage (logged in):
+    #    client = MatrixClient("https://matrix.org", token="foobar")
+    #rooms = client.get_rooms()  # NB: From initial sync
+    #client.add_listener(func)  # NB: event stream callback
+    #rooms[0].add_listener(func)  # NB: callbacks just for this room.
+    #room = client.join_room("#matrix:matrix.org")
+    #response = room.send_text("Hello!")
+    #response = room.kick("@bob:matrix.org")
+
 
     rooms = []
-
+    #"!cURbafjkfsMDVwdRDQ:matrix.org",  # main
+   #     "!HqyIHODmvZcSvOGJqw:matrix.org",  # odd
+   #     "!XqBunHwQIXUiqCaoxq:matrix.org",  # dev
+   #     "!zOmsiVucpWbRRDjSwe:matrix.org",  # internal
+   #     "!vfFxDRtZSSdspfTSEr:matrix.org",  # test
+   #     "!pDoZaoxgqWkenMFAyE:matrix.org",  #testing123
+   #     "!BbbQBRcbpgRhtyAead:matrix.org"   # oddvar-oddvar.org 1-1 chat
+    #]
     data = {}
 
     size = stdscr.getmaxyx()
-    backFill = initialSync(size[0])
-    #print(str(access_token))
+
+    #print(client)
+    #print(access_token)
+
+    #backFill = initialSync(1) #size[0])
+    #print(backFill)
+    #backFill = client.initial_sync(size[0])
+    backFill = client.api.initial_sync(size[0])
+    try:
+        for room in backFill["rooms"]:
+            incrementalText(".")
+            client._mkroom(room["room_id"])
+            client.end = backFill["end"]
+    except KeyError:
+        pass
+
+    incrementalText(".")
+    #print("-----")
+    #print(backFill)
+    #print("----")
+    #print(client.rooms)
+    #print("---")
+    #rooms = []
+
+    #for r in client.rooms:
+    #    registerRoom(str(r))
+    #    incrementalText(".")
+
+    endTime = client.end
     processBackFill(backFill)
+    incrementalText(".")
 
     nextRoom = 0
-    room = rooms[nextRoom]
+    room = rooms[len(rooms) - 1]
 
-    curses.curs_set(0)
 
-    curses.use_default_colors()
     curses.halfdelay(10)
     maxDisplayName = 24
     displayNamestartingPos = 20
     pause = False
 
+    #room = "!HqyIHODmvZcSvOGJqw:matrix.org" ## delete
+
     while(True):
         size = stdscr.getmaxyx()
 
-        for r in rooms:
-            obj = listenForMessage(r)
-            if processMessage(obj, r):
-                room = r
+        obj = None
+#        stdscr.addstr(5, 0, "H: " + endTime)
+#        stdscr.refresh()
+        obj = client.listen_for_events(endTime, 100)
+        response = processMessage(obj)
+        if response is not None:
+            room = response
+
+ #       stdscr.addstr(8, 0, "Ha: " + str(obj))
+ #       stdscr.refresh()
+        #time.sleep(10)
+
+        #for r in rooms:
+  #      if False:
+   #         obj = listenForMessage(str(r))
+
+    #        stdscr.addstr(1, 0, "checking messages for " + r + " from " +
+     #           endTime)
+      #      stdscr.addstr(2, 0, str(obj))
+
+
+       #     stdscr.addstr(3, 0, endTime)
+        #    stdscr.refresh()
+
+         #   if processMessage(obj, str(r)):
+          #      room = str(r)
+
+        #if 'end'.encode('utf-8') in obj:
+        #stdscr.addstr(7, 0, "H: " + endTime)
+        key = "end".encode("utf-8")
+        #stdscr.addstr(7, 30, "N: " + str(obj.get(key)))
+        endTime = obj.get(key)
+        #endTime = obj.get("end".encode('utf-8')) #""str(obj["u'end'"])
+        #stdscr.refresh()
+        #time.sleep(5)
+            #time.sleep(5)
 
         stdscr.clear()
         stdscr.addstr(
-            0, 0, ("redpill v0.2 · screen size: " + str(size) +
+            0, 0, ("redpill v0.3 · screen size: " + str(size) +
             " · chat size: " + str(len(data[room]["messages"]["chunk"])) +
             " · room: " + str(room)), curses.A_UNDERLINE
         )
@@ -249,93 +394,103 @@ def main(stdsc):
             y = 1
             if current >= 0:
 
+                # TODO: something when the first event is a typing
+
                 for event in reversed(data[room]["messages"]["chunk"]):
-                    currentLine = size[0] - y
-                    if currentLine < 3: # how many lines we want to reserve
-                        break
-                    y += 1
-                    convertedDate = datetime.datetime.fromtimestamp(
-                        int(
-                            event["origin_server_ts"] / 1000)
-                        ).strftime('%Y-%m-%d %H:%M:%S')
+                    if event["type"] == "m.typing":
+                        pass # do something clever
+                    else:
+                        currentLine = size[0] - y
 
-                    stdscr.addstr(currentLine, 0, convertedDate)
-                    # find length
-                    length = len(
-                        event["user_id"]
-                    )
-                    # assumption: body == normal message
-                    if "body" in event["content"]:
-                        if length > maxDisplayName:
-                            stdscr.addstr(
-                                currentLine, displayNamestartingPos, "<" +
-                                str(event["user_id"][:maxDisplayName])
+                        if currentLine < 3: # how many lines we want to reserve
+                            break
+                        y += 1
+                        if "origin_server_ts" in event:
+                            convertedDate = datetime.datetime.fromtimestamp(
+                                int(
+                                    event["origin_server_ts"] / 1000)
+                                ).strftime('%Y-%m-%d %H:%M:%S')
+
+                            stdscr.addstr(currentLine, 0, convertedDate)
+                        # find length
+                        if "user_id" in event:
+                            length = len(
+                                event["user_id"]
                             )
-                            stdscr.addstr(
-                                currentLine, displayNamestartingPos +
-                                maxDisplayName - 2, "...> "
-                            )  # 3 minus the "<" char=2
                         else:
+                            user_id = ""
+                        # assumption: body == normal message
+                        if "body" in event["content"]:
+                            if length > maxDisplayName:
+                                stdscr.addstr(
+                                    currentLine, displayNamestartingPos, "<" +
+                                    str(event["user_id"][:maxDisplayName])
+                                )
+                                stdscr.addstr(
+                                    currentLine, displayNamestartingPos +
+                                    maxDisplayName - 2, "...> "
+                                )  # 3 minus the "<" char=2
+                            else:
+                                stdscr.addstr(
+                                    currentLine, displayNamestartingPos +
+                                    maxDisplayName - length, "<" +
+                                    str(event["user_id"]) + "> "
+                                )
+
+                            rawText = event["content"]["body"]
+                            with open('debug.log', 'a') as the_file:
+                                the_file.write(rawText + "\n")
+
+                            buf = ""
+                            for line in rawText:
+                                for char in line:
+                                    if char == '\n':
+                                        pass
+                                    #elif char == ' ':   # skip all whitespace
+                                    #    self.X += 1
+                                    else:
+                                        buf += char
+
                             stdscr.addstr(
-                                currentLine, displayNamestartingPos +
-                                maxDisplayName - length, "<" +
-                                str(event["user_id"]) + "> "
+                                currentLine, displayNamestartingPos + maxDisplayName
+                                + 3, buf[:size[1] -
+                                (displayNamestartingPos + maxDisplayName + 4)],
+                                curses.A_BOLD
                             )
 
-                        rawText = event["content"]["body"]
-                        with open('debug.log', 'a') as the_file:
-                            the_file.write(rawText + "\n")
+                        # membership == join/leave events
+                        elif "membership" in event["content"]:
+                            buf = " has left"
+                            if event["content"]["membership"] == "join":
+                                buf = " has joined"
 
-                        buf = ""
-                        for line in rawText:
-                            for char in line:
-                                if char == '\n':
-                                    pass
-                                #elif char == ' ':   # skip all whitespace
-                                #    self.X += 1
-                                else:
-                                    buf += char
-
-                        stdscr.addstr(
-                            currentLine, displayNamestartingPos + maxDisplayName
-                            + 3, buf[:size[1] -
-                            (displayNamestartingPos + maxDisplayName + 4)],
-                            curses.A_BOLD
-                        )
-
-                    # membership == join/leave events
-                    elif "membership" in event["content"]:
-                        buf = " has left"
-                        if event["content"]["membership"] == "join":
-                            buf = " has joined"
-
-                        if length > maxDisplayName:
-                            stdscr.addstr(
-                                currentLine,
-                                displayNamestartingPos + 1,
-                                str(event["user_id"]),
-                                curses.A_DIM
+                            if length > maxDisplayName:
+                                stdscr.addstr(
+                                    currentLine,
+                                    displayNamestartingPos + 1,
+                                    str(event["user_id"]),
+                                    curses.A_DIM
+                                )
+                                stdscr.addstr(
+                                    currentLine,
+                                    displayNamestartingPos + length + 1,
+                                    buf,
+                                    curses.A_DIM
                             )
-                            stdscr.addstr(
-                                currentLine,
-                                displayNamestartingPos + length + 1,
-                                buf,
-                                curses.A_DIM
-                        )
-                        else:
-                            stdscr.addstr(
-                                currentLine,
-                                displayNamestartingPos + 1 +
-                                maxDisplayName - length,
-                                str(event["user_id"]),
-                                curses.A_DIM
-                            )
-                            stdscr.addstr(
-                                currentLine,
-                                displayNamestartingPos + maxDisplayName + 1,
-                                buf,
-                                curses.A_DIM
-                            )
+                            else:
+                                stdscr.addstr(
+                                    currentLine,
+                                    displayNamestartingPos + 1 +
+                                    maxDisplayName - length,
+                                    str(event["user_id"]),
+                                    curses.A_DIM
+                                )
+                                stdscr.addstr(
+                                    currentLine,
+                                    displayNamestartingPos + maxDisplayName + 1,
+                                    buf,
+                                    curses.A_DIM
+                                )
 
                     current -= 1
         if pause:
