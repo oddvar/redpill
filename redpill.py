@@ -125,8 +125,7 @@ def main(stdsc):
     while(True):
         size = stdscr.getmaxyx()
 
-        obj = None
-        obj = client.listen_for_events(endTime, 100)
+        obj = client.api.event_stream(endTime, 100)
         response = processMessage(obj)
         if response is not None:
             room = response
