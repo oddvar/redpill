@@ -8,188 +8,18 @@ import json
 import time
 import datetime
 import curses
-#sys.path.append("/home/oddvar/src/matrix/matrix-python-sdk/")
 from matrix_client.client import MatrixClient
-#from pprint import pprint
 
 
 def loadCredentials(filename):
     global password, username, server
     json_data = open(filename)
     data = json.load(json_data)
-    #pprint(data)
     json_data.close()
 
     username = data["username"]
     password = data["password"]
     server = data["server"]
-
-
-def login():
-    global access_token
-    # TODO: should do a GET first to find access methods
-
-    url = server + '/_matrix/client/api/v1/login'  # lint:ok
-    values = {
-        "type": "m.login.password", "user": username,   # lint:ok
-        "password": password  # lint:ok
-    }
-
-    params = json.dumps(values).encode('utf8')
-    #print(str(params))
-    req = urllib.request.Request(
-        url, data=params,
-        headers={'content-type': 'application/json'}
-    )
-
-    response = urllib.request.urlopen(req)
-
-    #obj = json.load(response)
-    str_response = response.readall().decode('utf-8')
-    obj = json.loads(str_response)
-    #print(obj)
-    access_token = obj["access_token"]
-
-
-def initialRoomSync(roomId):
-    url = (
-        server + '/_matrix/client/api/v1/rooms/' + roomId +   # lint:ok
-        '/initialSync'
-    )
-
-    #values = {"type":"m.login.password", "user":username, "password":password }
-    values = {"access_token": access_token, "limit": 1}   # lint:ok
-    url_values = urllib.parse.urlencode(values)
-    #print(url_values)
-    url += "?" + url_values
-    #print(url)
-    #params = json.dumps(values).encode('utf8')
-    #print(str(params))
-    req = urllib.request.Request(
-        url, headers={'content-type': 'application/json'}
-    )
-    response = urllib.request.urlopen(req)
-
-    str_response = response.readall().decode('utf-8')
-    obj = json.loads(str_response)
-    #print(json.dumps(obj, indent=4))
-    test = obj["messages"]["end"]
-
-    if 'end' in obj:
-        test = obj["end"]
-    return test
-
-
-def initialSync(maxMessages):
-
-    url = server + '/_matrix/client/api/v1/initialSync'   # lint:ok
-    #values = {"type":"m.login.password", "user":username, "password":password }
-    values = {"access_token": access_token, "limit": maxMessages}   # lint:ok
-    url_values = urllib.parse.urlencode(values)
-    #print(url_values)
-    url += "?" + url_values
-    #print(url)
-    #params = json.dumps(values).encode('utf8')
-    #print(str(params))
-    req = urllib.request.Request(
-        url, headers={'content-type': 'application/json'}
-        )
-
-    response = urllib.request.urlopen(req)
-
-    str_response = response.readall().decode('utf-8')
-    obj = json.loads(str_response)
-    #print(json.dumps(obj, indent=4))
-    #test = obj["messages"]["end"]
-    return obj
-
-
-def listenForEvent(room, end):
-    url = server + '/_matrix/client/api/v1/events'   # lint:ok
-    values = {"access_token": access_token, "from": end}   # lint:ok
-    url_values = urllib.parse.urlencode(values)
-    #print(url_values)
-    url += "?" + url_values
-    req = urllib.request.Request(
-        url, headers={'content-type': 'application/json'}
-    )
-    response = urllib.request.urlopen(req)
-
-    str_response = response.readall().decode('utf-8')
-    obj = json.loads(str_response)
-    #print(json.dumps(obj, indent=4))
-    test = end
-    if 'end' in obj:
-        test = obj["end"]
-    return test
-
-def listenForMessage(room):
-    global endTime
-
-    url = (
-        server + '/_matrix/client/api/v1/rooms/' + room +  # lint:ok
-        "/messages"
-    )
-    query_params = {}
-    query_params["access_token"] = access_token
-    query_params["from"] = endTime
-
-    return _send("GET", url, None, query_params)
-
-
-def _send(method, path, content=None, query_params={}, headers={}):
-    method = method.upper()
-    if method not in ["GET", "PUT", "DELETE", "POST"]:
-        raise MatrixError("Unsupported HTTP method: %s" % method)
-
-    headers["Content-Type"] = "application/json"
-    #query_params["access_token"] = access_token
-    #query_params["from"] =  data[room]["endTime"]
-    endpoint = path
-
-    response = requests.request(
-        method, endpoint, params=query_params,
-        data=json.dumps(content), headers=headers
-        , verify=False
-    )
-
-    if response.status_code < 200 or response.status_code >= 300:
-        raise MatrixRequestError(
-            code=response.status_code, content=response.text
-        )
-
-    return response.json()
-
-def listenForMessage2(room):
-    global data, stdscr, endTime
-    url = (
-        server + '/_matrix/client/api/v1/rooms/' + room +  # lint:ok
-        "/messages"
-    )
-
-    values = {
-        "access_token": access_token, "from": endTime   # lint:ok
-    }
-    url_values = urllib.parse.urlencode(values)
-    #print(url_values)
-    url += "?" + url_values
-    stdscr.addstr(1, 0, "checking messages for " + room)
-    stdscr.refresh()
-    #c = stdscr.getch()
-
-    req = urllib.request.Request(
-        url, headers={'content-type': 'application/json'}
-    )
-    response = urllib.request.urlopen(req)
-
-    str_response = response.readall().decode('utf-8')
-    obj = json.loads(str_response)
-    #print(json.dumps(obj, indent=4))
-    test = data[room]["endTime"]   # lint:ok
-    if 'end' in obj:
-        test = obj["end"]
-
-    return obj
 
 
 def processBackFill(backFill):
@@ -198,13 +28,11 @@ def processBackFill(backFill):
     if "rooms" in backFill:
         for r in backFill["rooms"]:
             room = r.get("room_id", "unknown")
-            #print(room)
             if "messages" in r:
                 newMessages = r.get("messages")
                 test = newMessages.get("end")
                 if "chunk" in newMessages:
                     for thing in newMessages.get("chunk"):
-                        #if "content" in thing and "body" in thing["content"]:  #can also be join msgs
                         if True:
                             registerRoom(room)
                             temp = data[room]["messages"]["chunk"]
@@ -227,7 +55,6 @@ def processMessage(obj):
                 temp = data[room]["messages"]["chunk"]
                 temp.append(thing)
                 data[room]["messages"]["chunk"] = temp
-                #data[room]["endTime"] = test
                 didWeProcessSomethingSuccessfully = room
     return didWeProcessSomethingSuccessfully
 
@@ -240,8 +67,6 @@ def registerRoom(roomid):
         data[roomid] = {}
         data[roomid]["messages"] = {}
         data[roomid]["messages"]["chunk"] = []
-        #end = initialRoomSync(roomid)
-        #data[roomid]["endTime"] = end  # do this in the function above
 
 
 def incrementalText(string):
@@ -249,9 +74,7 @@ def incrementalText(string):
 
     stdscr.addstr(0, incrementalTextOffset, string)
     stdscr.refresh()
-
     incrementalTextOffset += len(string)
-
 
 
 def main(stdsc):
@@ -264,7 +87,7 @@ def main(stdsc):
 
     incrementalTextOffset = 0
     incrementalText("loading")
-    loadCredentials("credentials")
+    loadCredentials("./credentials.json")
 
     incrementalText(".")
     client = MatrixClient(server)
@@ -272,38 +95,10 @@ def main(stdsc):
     access_token = client.login_with_password(username=username, password=password)
     incrementalText(".")
 
-#room = client.create_room("myroom")
-    #room.send_image(file_like_object)
-
-    #Usage (logged in):
-    #    client = MatrixClient("https://matrix.org", token="foobar")
-    #rooms = client.get_rooms()  # NB: From initial sync
-    #client.add_listener(func)  # NB: event stream callback
-    #rooms[0].add_listener(func)  # NB: callbacks just for this room.
-    #room = client.join_room("#matrix:matrix.org")
-    #response = room.send_text("Hello!")
-    #response = room.kick("@bob:matrix.org")
-
-
     rooms = []
-    #"!cURbafjkfsMDVwdRDQ:matrix.org",  # main
-   #     "!HqyIHODmvZcSvOGJqw:matrix.org",  # odd
-   #     "!XqBunHwQIXUiqCaoxq:matrix.org",  # dev
-   #     "!zOmsiVucpWbRRDjSwe:matrix.org",  # internal
-   #     "!vfFxDRtZSSdspfTSEr:matrix.org",  # test
-   #     "!pDoZaoxgqWkenMFAyE:matrix.org",  #testing123
-   #     "!BbbQBRcbpgRhtyAead:matrix.org"   # oddvar-oddvar.org 1-1 chat
-    #]
     data = {}
-
     size = stdscr.getmaxyx()
 
-    #print(client)
-    #print(access_token)
-
-    #backFill = initialSync(1) #size[0])
-    #print(backFill)
-    #backFill = client.initial_sync(size[0])
     backFill = client.api.initial_sync(size[0])
     try:
         for room in backFill["rooms"]:
@@ -314,16 +109,6 @@ def main(stdsc):
         pass
 
     incrementalText(".")
-    #print("-----")
-    #print(backFill)
-    #print("----")
-    #print(client.rooms)
-    #print("---")
-    #rooms = []
-
-    #for r in client.rooms:
-    #    registerRoom(str(r))
-    #    incrementalText(".")
 
     endTime = client.end
     processBackFill(backFill)
@@ -332,53 +117,22 @@ def main(stdsc):
     nextRoom = 0
     room = rooms[len(rooms) - 1]
 
-
     curses.halfdelay(10)
     maxDisplayName = 24
     displayNamestartingPos = 20
     pause = False
 
-    #room = "!HqyIHODmvZcSvOGJqw:matrix.org" ## delete
-
     while(True):
         size = stdscr.getmaxyx()
 
         obj = None
-#        stdscr.addstr(5, 0, "H: " + endTime)
-#        stdscr.refresh()
         obj = client.listen_for_events(endTime, 100)
         response = processMessage(obj)
         if response is not None:
             room = response
 
- #       stdscr.addstr(8, 0, "Ha: " + str(obj))
- #       stdscr.refresh()
-        #time.sleep(10)
-
-        #for r in rooms:
-  #      if False:
-   #         obj = listenForMessage(str(r))
-
-    #        stdscr.addstr(1, 0, "checking messages for " + r + " from " +
-     #           endTime)
-      #      stdscr.addstr(2, 0, str(obj))
-
-
-       #     stdscr.addstr(3, 0, endTime)
-        #    stdscr.refresh()
-
-         #   if processMessage(obj, str(r)):
-          #      room = str(r)
-
-        #if 'end'.encode('utf-8') in obj:
-        #stdscr.addstr(7, 0, "H: " + endTime)
         key = "end".encode("utf-8")
-        #stdscr.addstr(7, 30, "N: " + str(obj.get(key)))
         endTime = obj.get(key)
-        #endTime = obj.get("end".encode('utf-8')) #""str(obj["u'end'"])
-        #stdscr.refresh()
-        #time.sleep(5)
-            #time.sleep(5)
 
         stdscr.clear()
         stdscr.addstr(
@@ -389,12 +143,11 @@ def main(stdsc):
 
         current = len(data[room]["messages"]["chunk"]) - 1
 
-        #for y in range(1, size[0]):
         if True:
             y = 1
             if current >= 0:
 
-                # TODO: something when the first event is a typing
+                # TODO: something when the first event is a typing event
 
                 for event in reversed(data[room]["messages"]["chunk"]):
                     if event["type"] == "m.typing":
@@ -571,15 +324,12 @@ def main(stdsc):
                     curses.halfdelay(10)
                     stdscr.timeout(1)
             elif c == ord("q"):
-                #main.endwin()
-                #stdscr.endwin()
                 curses.endwin()
                 quit()
+
             stdscr.addstr(2, 0, "time() == %s\n" % time.time())
 
         finally:
             do_nothing = True
 
 curses.wrapper(main)
-
-#main(False)
