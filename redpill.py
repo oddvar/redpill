@@ -42,10 +42,12 @@ def processBackFill(backFill):
 
 
 def processMessage(obj):
-    global data
+    global data, room, endTime, stdscr
 
     didWeProcessSomethingSuccessfully = None
 
+    stdscr.addstr(1, 0, "processing")
+    stdscr.refresh()
     if 'chunk' in obj:
         for thing in obj.get("chunk"):
             if "room_id" in thing:
@@ -55,6 +57,11 @@ def processMessage(obj):
                 temp = data[room]["messages"]["chunk"]
                 temp.append(thing)
                 data[room]["messages"]["chunk"] = temp
+
+                #key = "end".encode("utf-8")
+                endTime = obj.get("end")
+                stdscr.addstr(2, 0, str(endTime))
+                stdscr.refresh()
                 didWeProcessSomethingSuccessfully = room
     return didWeProcessSomethingSuccessfully
 
@@ -122,22 +129,26 @@ def main(stdsc):
     displayNamestartingPos = 20
     pause = False
 
+    client.add_listener(processMessage)
+
     while(True):
         size = stdscr.getmaxyx()
 
-        obj = client.api.event_stream(endTime, 100)
-        response = processMessage(obj)
-        if response is not None:
-            room = response
+        #obj = client.api.event_stream(endTime, 100)
+        #response = processMessage(obj)
+        client.listen_for_events(100)
 
-        key = "end".encode("utf-8")
-        endTime = obj.get(key)
+        #if response is not None:
+        #    room = response
+
+        #key = "end".encode("utf-8")
+        #endTime = obj.get(key)
 
         stdscr.clear()
         stdscr.addstr(
             0, 0, ("redpill v0.3 · screen size: " + str(size) +
             " · chat size: " + str(len(data[room]["messages"]["chunk"])) +
-            " · room: " + str(room)), curses.A_UNDERLINE
+            " · room: " + str(room) + " · " + str(endTime)), curses.A_UNDERLINE
         )
 
         current = len(data[room]["messages"]["chunk"]) - 1
