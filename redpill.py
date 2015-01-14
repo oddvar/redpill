@@ -1,9 +1,5 @@
 # -*- coding: utf-8 -*-
 
-import urlparse
-import urllib
-import re
-import requests
 import json
 import time
 import datetime
@@ -39,6 +35,11 @@ def processBackFill(backFill):
                             temp.append(thing)
                             data[room]["messages"]["chunk"] = temp
                             data[room]["endTime"] = test
+    for event in backFill:
+        if "room_id" in event:
+            room = event["room_id"]
+            registerRoom(room)
+            data[room]["messages"]["chunk"].append(event)
 
 
 def processMessage(obj):
@@ -46,8 +47,6 @@ def processMessage(obj):
 
     didWeProcessSomethingSuccessfully = None
 
-    stdscr.addstr(1, 0, "processing")
-    stdscr.refresh()
     if 'chunk' in obj:
         for thing in obj.get("chunk"):
             if "room_id" in thing:
@@ -57,11 +56,7 @@ def processMessage(obj):
                 temp = data[room]["messages"]["chunk"]
                 temp.append(thing)
                 data[room]["messages"]["chunk"] = temp
-
-                #key = "end".encode("utf-8")
                 endTime = obj.get("end")
-                stdscr.addstr(2, 0, str(endTime))
-                stdscr.refresh()
                 didWeProcessSomethingSuccessfully = room
     return didWeProcessSomethingSuccessfully
 
@@ -70,7 +65,7 @@ def registerRoom(roomid):
     global data, rooms
 
     if roomid not in data:
-        rooms.append(roomid)
+        #rooms.append(roomid)
         data[roomid] = {}
         data[roomid]["messages"] = {}
         data[roomid]["messages"]["chunk"] = []
@@ -91,6 +86,7 @@ def main(stdsc):
 
     curses.curs_set(0)
     curses.use_default_colors()
+    size = stdscr.getmaxyx()
 
     incrementalTextOffset = 0
     incrementalText("loading")
@@ -99,30 +95,34 @@ def main(stdsc):
     incrementalText(".")
     client = MatrixClient(server)
     incrementalText(".")
-    access_token = client.login_with_password(username=username, password=password)
+    access_token = client.login_with_password(
+        username,
+        password,
+        size[0])
+
     incrementalText(".")
 
-    rooms = []
-    data = {}
-    size = stdscr.getmaxyx()
+    rooms = client.get_rooms()
+    roomkeys = rooms.keys()
 
-    backFill = client.api.initial_sync(size[0])
+    data = {}
+
+    room = "foo"
     try:
-        for room in backFill["rooms"]:
+        for room in rooms:
             incrementalText(".")
-            client._mkroom(room["room_id"])
-            client.end = backFill["end"]
+            backFill = rooms[room].get_events()
+            processBackFill(backFill)
+
     except KeyError:
         pass
 
     incrementalText(".")
 
     endTime = client.end
-    processBackFill(backFill)
-    incrementalText(".")
 
-    nextRoom = 0
-    room = rooms[len(rooms) - 1]
+    room = roomkeys[0]
+    nextRoom = 1
 
     curses.halfdelay(10)
     maxDisplayName = 24
@@ -134,21 +134,14 @@ def main(stdsc):
     while(True):
         size = stdscr.getmaxyx()
 
-        #obj = client.api.event_stream(endTime, 100)
-        #response = processMessage(obj)
         client.listen_for_events(100)
-
-        #if response is not None:
-        #    room = response
-
-        #key = "end".encode("utf-8")
-        #endTime = obj.get(key)
-
         stdscr.clear()
         stdscr.addstr(
-            0, 0, ("redpill v0.3 · screen size: " + str(size) +
-            " · chat size: " + str(len(data[room]["messages"]["chunk"])) +
-            " · room: " + str(room) + " · " + str(endTime)), curses.A_UNDERLINE
+            0, 0, (
+                "redpill v0.4 · screen size: " + str(size) + " · chat size: "
+                + str(len(data[room]["messages"]["chunk"])) + " · room: " +
+                str(room) + " · " + str(endTime)
+            ), curses.A_UNDERLINE
         )
 
         current = len(data[room]["messages"]["chunk"]) - 1
@@ -161,11 +154,11 @@ def main(stdsc):
 
                 for event in reversed(data[room]["messages"]["chunk"]):
                     if event["type"] == "m.typing":
-                        pass # do something clever
+                        pass  # do something clever
                     else:
                         currentLine = size[0] - y
 
-                        if currentLine < 3: # how many lines we want to reserve
+                        if currentLine < 2:  # how many lines we want to reserve
                             break
                         y += 1
                         if "origin_server_ts" in event:
@@ -175,14 +168,12 @@ def main(stdsc):
                                 ).strftime('%Y-%m-%d %H:%M:%S')
 
                             stdscr.addstr(currentLine, 0, convertedDate)
-                        # find length
+                        # assumption: body == normal message
+                        length = 0
                         if "user_id" in event:
                             length = len(
                                 event["user_id"]
                             )
-                        else:
-                            user_id = ""
-                        # assumption: body == normal message
                         if "body" in event["content"]:
                             if length > maxDisplayName:
                                 stdscr.addstr(
@@ -215,17 +206,22 @@ def main(stdsc):
                                         buf += char
 
                             stdscr.addstr(
-                                currentLine, displayNamestartingPos + maxDisplayName
-                                + 3, buf[:size[1] -
+                                currentLine, displayNamestartingPos +
+                                maxDisplayName + 3, buf[:size[1] -
                                 (displayNamestartingPos + maxDisplayName + 4)],
                                 curses.A_BOLD
                             )
 
                         # membership == join/leave events
                         elif "membership" in event["content"]:
-                            buf = " has left"
-                            if event["content"]["membership"] == "join":
+                            buf = " invited someone"
+                            if event["content"]["membership"] == "invite":
+                                if "state_key" in event:
+                                    buf = " invited " + event["state_key"]
+                            elif event["content"]["membership"] == "join":
                                 buf = " has joined"
+                            elif event["content"]["membership"] == "leave":
+                                buf = " has left"
 
                             if length > maxDisplayName:
                                 stdscr.addstr(
@@ -277,14 +273,14 @@ def main(stdsc):
             )
 
         stdscr.refresh()
-        #time.sleep(1)
+
         try:
             c = stdscr.getch()
             if c == -1:
                 stdscr.addstr(1, 0, "timeout")
             elif c == 9:
                 stdscr.addstr(1, 0, "%s was pressed\n" % c)
-                room = rooms[nextRoom]
+                room = roomkeys[nextRoom]
                 nextRoom = (nextRoom + 1) % len(rooms)
             elif c == ord("p"):
                 pause = not(pause)
