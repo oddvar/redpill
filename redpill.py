@@ -20,10 +20,9 @@ def loadCredentials(filename):
 
 def processMessage(obj):
     global room
-    if 'chunk' in obj:
-        for thing in obj.get("chunk"):
-            if "room_id" in thing:
-                room = thing["room_id"]
+
+    if "room_id" in obj:
+        room = obj["room_id"]
 
 
 def main(stdscr):
@@ -63,7 +62,7 @@ def main(stdscr):
         stdscr.clear()
         stdscr.addstr(
             0, 0, (
-                "redpill v0.4 · screen size: " + str(size) + " · chat size: "
+                "redpill v0.5 · screen size: " + str(size) + " · chat size: "
                 + str(len(rooms[room].events)) + " · room: " +
                 str(room) + " · " + str(endTime)
             ), curses.A_UNDERLINE
