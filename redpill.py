@@ -18,111 +18,36 @@ def loadCredentials(filename):
     server = data["server"]
 
 
-def processBackFill(backFill):
-    global data
-
-    if "rooms" in backFill:
-        for r in backFill["rooms"]:
-            room = r.get("room_id", "unknown")
-            if "messages" in r:
-                newMessages = r.get("messages")
-                test = newMessages.get("end")
-                if "chunk" in newMessages:
-                    for thing in newMessages.get("chunk"):
-                        if True:
-                            registerRoom(room)
-                            temp = data[room]["messages"]["chunk"]
-                            temp.append(thing)
-                            data[room]["messages"]["chunk"] = temp
-                            data[room]["endTime"] = test
-    for event in backFill:
-        if "room_id" in event:
-            room = event["room_id"]
-            registerRoom(room)
-            data[room]["messages"]["chunk"].append(event)
-
-
 def processMessage(obj):
-    global data, room, endTime, stdscr
-
-    didWeProcessSomethingSuccessfully = None
-
+    global room
     if 'chunk' in obj:
         for thing in obj.get("chunk"):
             if "room_id" in thing:
                 room = thing["room_id"]
-                if room not in data:
-                    registerRoom(room)
-                temp = data[room]["messages"]["chunk"]
-                temp.append(thing)
-                data[room]["messages"]["chunk"] = temp
-                endTime = obj.get("end")
-                didWeProcessSomethingSuccessfully = room
-    return didWeProcessSomethingSuccessfully
 
 
-def registerRoom(roomid):
-    global data, rooms
-
-    if roomid not in data:
-        #rooms.append(roomid)
-        data[roomid] = {}
-        data[roomid]["messages"] = {}
-        data[roomid]["messages"]["chunk"] = []
-
-
-def incrementalText(string):
-    global incrementalTextOffset, stdscr
-
-    stdscr.addstr(0, incrementalTextOffset, string)
-    stdscr.refresh()
-    incrementalTextOffset += len(string)
-
-
-def main(stdsc):
-    global size, room, data, stdscr, rooms, access_token, endTime, incrementalTextOffset
-
-    stdscr = stdsc
+def main(stdscr):
+    global size, room, data, rooms, access_token, endTime, incrementalTextOffset
 
     curses.curs_set(0)
     curses.use_default_colors()
     size = stdscr.getmaxyx()
 
-    incrementalTextOffset = 0
-    incrementalText("loading")
+    stdscr.addstr(0, 0, "loading...")
+    stdscr.refresh()
     loadCredentials("./credentials.json")
 
-    incrementalText(".")
     client = MatrixClient(server)
-    incrementalText(".")
     access_token = client.login_with_password(
         username,
         password,
         size[0])
 
-    incrementalText(".")
-
     rooms = client.get_rooms()
-    roomkeys = rooms.keys()
-
-    data = {}
-
-    room = "foo"
-    try:
-        for room in rooms:
-            incrementalText(".")
-            backFill = rooms[room].get_events()
-            processBackFill(backFill)
-
-    except KeyError:
-        pass
-
-    incrementalText(".")
-
-    endTime = client.end
-
+    roomkeys = list(rooms.keys())
     room = roomkeys[0]
     nextRoom = 1
+    endTime = client.end
 
     curses.halfdelay(10)
     maxDisplayName = 24
@@ -130,30 +55,34 @@ def main(stdsc):
     pause = False
 
     client.add_listener(processMessage)
+    client.start_listener_thread()
 
     while(True):
         size = stdscr.getmaxyx()
 
-        client.listen_for_events(100)
         stdscr.clear()
         stdscr.addstr(
             0, 0, (
                 "redpill v0.4 · screen size: " + str(size) + " · chat size: "
-                + str(len(data[room]["messages"]["chunk"])) + " · room: " +
+                + str(len(rooms[room].events)) + " · room: " +
                 str(room) + " · " + str(endTime)
             ), curses.A_UNDERLINE
         )
 
-        current = len(data[room]["messages"]["chunk"]) - 1
+        current = len(rooms[room].events) - 1
 
         if True:
             y = 1
             if current >= 0:
 
                 # TODO: something when the first event is a typing event
-
-                for event in reversed(data[room]["messages"]["chunk"]):
+#reversed
+                for event in reversed(rooms[room].events):
+                    #stdscr.clear()
+                    #stdscr.addstr(1, 0, str(event))
+                    #stdscr.refresh()
                     if event["type"] == "m.typing":
+                    #if True:
                         pass  # do something clever
                     else:
                         currentLine = size[0] - y
@@ -332,6 +261,8 @@ def main(stdsc):
             elif c == ord("q"):
                 curses.endwin()
                 quit()
+            elif c == ord("r"):
+                rooms = client.get_rooms()
 
             stdscr.addstr(2, 0, "time() == %s\n" % time.time())
 
