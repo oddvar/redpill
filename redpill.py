@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import re
 import json
 import time
 import datetime
@@ -51,6 +52,7 @@ def main(stdscr):
     curses.halfdelay(10)
     maxDisplayName = 24
     displayNamestartingPos = 20
+    PAD_COMMENTS = True
     pause = False
 
     client.add_listener(processMessage)
@@ -76,6 +78,7 @@ def main(stdscr):
 
                 # TODO: something when the first event is a typing event
 #reversed
+                currentLine = size[0]
                 for event in reversed(rooms[room].events):
                     #stdscr.clear()
                     #stdscr.addstr(1, 0, str(event))
@@ -84,10 +87,13 @@ def main(stdscr):
                     #if True:
                         pass  # do something clever
                     else:
-                        currentLine = size[0] - y
+                        #currentLine = size[0] - y
+                        currentLine -= 1
 
                         if currentLine < 2:  # how many lines we want to reserve
                             break
+                        #if currentLine == 5:
+                        #    currentLine -= 1
                         y += 1
                         if "origin_server_ts" in event:
                             convertedDate = datetime.datetime.fromtimestamp(
@@ -95,7 +101,6 @@ def main(stdscr):
                                     event["origin_server_ts"] / 1000)
                                 ).strftime('%Y-%m-%d %H:%M:%S')
 
-                            stdscr.addstr(currentLine, 0, convertedDate)
                         # assumption: body == normal message
                         length = 0
                         if "user_id" in event:
@@ -103,6 +108,122 @@ def main(stdscr):
                                 event["user_id"]
                             )
                         if "body" in event["content"]:
+
+                            rawText = event["content"]["body"]
+                            with open('debug.log', 'a') as the_file:
+                                the_file.write(rawText + "\n")
+
+                            linesNeeded = (displayNamestartingPos + maxDisplayName + 3 + len(rawText)) / size[1]
+                            lin = (displayNamestartingPos + maxDisplayName + 3 + len(rawText))
+
+                            stdscr.addstr(currentLine, 0, str(lin) + " " + str(size[1]) + " " + str(linesNeeded) + "  ")
+
+                            # separate test if multiline as the linesNeeded above will be wrong
+
+                            pattern = re.compile(r'\n\$,')
+                            #if pattern.findall(rawText):
+                            linesNeeded = 0
+
+                            buf = ""
+                            lineByLineText = []
+                            first = True
+                            bufSinceLastWord = ""
+                            for char in rawText:
+                                if True: #for char in line:
+
+                                    bufSinceLastWord += char
+
+                                    if char == '\n':
+                                        linesNeeded += 1
+                                        buf += bufSinceLastWord
+
+                                        if PAD_COMMENTS or first:
+                                            linesNeeded += (displayNamestartingPos + maxDisplayName + 3 + len(buf)) / size[1]
+                                        else:
+                                            linesNeeded += len(buf) / size[1]
+
+                                        first = False
+                                        lineByLineText.append(buf)
+                                        buf = ""
+                                        bufSinceLastWord = ""
+                                    else:
+                                        if ((PAD_COMMENTS and (displayNamestartingPos + maxDisplayName + 3 + len(buf + bufSinceLastWord)) == size[1] - 1)
+                                            or (not PAD_COMMENTS and (len(buf + bufSinceLastWord)) == size[1] - 1)):
+
+                                        #if (displayNamestartingPos + maxDisplayName + 3 + len(buf + bufSinceLastWord)) == size[1] - 1:
+                                            if len(buf) == 0:
+                                                buf += bufSinceLastWord
+                                                bufSinceLastWord = ""
+
+                                            if char.isspace():
+                                                buf += bufSinceLastWord
+                                                lineByLineText.append(buf)
+                                                bufSinceLastWord = ""
+                                                buf = ""
+                                            else:
+                                                lineByLineText.append(buf)
+                                                buf = bufSinceLastWord
+                                                bufSinceLastWord = ""
+                                            linesNeeded += 1
+
+                                    if char.isspace():
+                                        buf += bufSinceLastWord
+                                        bufSinceLastWord = ""
+
+#                                if (displayNamestartingPos + maxDisplayName + 3 + len(buf + bufSinceLastWord)) == size[1] - 1:
+                                if ((PAD_COMMENTS and (displayNamestartingPos + maxDisplayName + 3 + len(buf + bufSinceLastWord)) == size[1] - 1)
+                                   or (not PAD_COMMENTS and (len(buf + bufSinceLastWord)) == size[1] - 1)):
+
+                                    buf += bufSinceLastWord
+                                    bufSinceLastWord = ""
+                                    lineByLineText.append(buf)
+                                    linesNeeded += 1
+                                    buf = ""
+                                    #elif char == ' ':   # skip all whitespace
+                                    #    self.X += 1
+                            buf += bufSinceLastWord
+                            lineByLineText.append(buf)
+                            linesNeeded += (displayNamestartingPos + maxDisplayName + 3 + len(buf)) / size[1]
+                            buf = ""
+
+
+
+
+
+
+
+                            currentLine -= linesNeeded
+                            if currentLine - linesNeeded < 2:  # how many lines we want to reserve
+                                break
+
+                            stdscr.addstr(currentLine, 0, str(lin) + " " + str(size[1]) + " " + str(linesNeeded) + "  ")
+
+                            #for i in range(linesNeeded):
+
+
+                            if PAD_COMMENTS:
+                                pad = displayNamestartingPos + maxDisplayName + 3
+
+
+                                #if linesNeeded == 0:
+                                linesNeeded += 1
+
+                                for i in range(linesNeeded):
+                                    buf = rawText[:size[1] - pad]
+                                    rawText = rawText[size[1] - pad:]
+                                    stdscr.addstr(
+                                        currentLine + i, displayNamestartingPos +
+                                        maxDisplayName + 3, lineByLineText[i],
+                                        curses.A_BOLD
+                                    )
+
+                            else:
+                                stdscr.addstr(
+                                    currentLine, displayNamestartingPos +
+                                    maxDisplayName + 3, rawText,
+                                    curses.A_BOLD
+                                )
+
                             if length > maxDisplayName:
                                 stdscr.addstr(
                                     currentLine, displayNamestartingPos, "<" +
@@ -119,26 +240,21 @@ def main(stdscr):
                                     str(event["user_id"]) + "> "
                                 )
 
-                            rawText = event["content"]["body"]
-                            with open('debug.log', 'a') as the_file:
-                                the_file.write(rawText + "\n")
+                            stdscr.addstr(currentLine, 0, convertedDate)
 
-                            buf = ""
-                            for line in rawText:
-                                for char in line:
-                                    if char == '\n':
-                                        pass
-                                    #elif char == ' ':   # skip all whitespace
-                                    #    self.X += 1
-                                    else:
-                                        buf += char
-
-                            stdscr.addstr(
-                                currentLine, displayNamestartingPos +
-                                maxDisplayName + 3, buf[:size[1] -
-                                (displayNamestartingPos + maxDisplayName + 4)],
-                                curses.A_BOLD
-                            )
+                            #if currentLine == size[1]:  # last line
+                            #    stdscr.addstr(
+                            #        currentLine, displayNamestartingPos +
+                            #        maxDisplayName + 3, buf[:size[1] -
+                            #        (displayNamestartingPos + maxDisplayName + 4)],
+                            #         curses.A_BOLD
+                            #    )
+                            #else:
+                            #    stdscr.addstr(
+                            #        currentLine, displayNamestartingPos +
+                            #        maxDisplayName + 3, buf,
+                            #        curses.A_BOLD
+                            #    )
 
                         # membership == join/leave events
                         elif "membership" in event["content"]:
@@ -262,6 +378,8 @@ def main(stdscr):
                 quit()
             elif c == ord("r"):
                 rooms = client.get_rooms()
+            elif c == ord("c"):
+                PAD_COMMENTS = not PAD_COMMENTS
 
             stdscr.addstr(2, 0, "time() == %s\n" % time.time())
 
