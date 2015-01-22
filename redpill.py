@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import re
+import sys
 import json
 import time
 import datetime
@@ -58,15 +59,21 @@ def main(stdscr):
     client.add_listener(processMessage)
     client.start_listener_thread()
 
+    curses.echo()
+    stdscr.keypad(True)
+    inputBuffer = ""
+
+
     while(True):
         size = stdscr.getmaxyx()
+        maxChars = size[1] - 1 - len(username) - 3
 
         stdscr.clear()
         stdscr.addstr(
             0, 0, (
-                "redpill v0.5 · screen size: " + str(size) + " · chat size: "
+                "redpill v0.6 · screen size: " + str(size) + " · chat size: "
                 + str(len(rooms[room].events)) + " · room: " +
-                str(room) + " · " + str(endTime)
+                str(room)
             ), curses.A_UNDERLINE
         )
 
@@ -78,7 +85,16 @@ def main(stdscr):
 
                 # TODO: something when the first event is a typing event
 #reversed
-                currentLine = size[0]
+                currentLine = size[0] - 1
+
+                # input
+                space = ""
+                for i in range(size[1] - 1):
+                    space += " "
+                stdscr.addstr(currentLine, 0, space, curses.A_DIM)
+                stdscr.addstr(currentLine, 0, "<" + username + ">", curses.A_DIM)
+                stdscr.addstr(currentLine - 1, 0, space, curses.A_UNDERLINE)
+
                 for event in reversed(rooms[room].events):
                     #stdscr.clear()
                     #stdscr.addstr(1, 0, str(event))
@@ -116,7 +132,10 @@ def main(stdscr):
                             linesNeeded = (displayNamestartingPos + maxDisplayName + 3 + len(rawText)) / size[1]
                             lin = (displayNamestartingPos + maxDisplayName + 3 + len(rawText))
 
-                            stdscr.addstr(currentLine, 0, str(lin) + " " + str(size[1]) + " " + str(linesNeeded) + "  ")
+                            if currentLine == size[0] - 2:
+                                stdscr.addstr(currentLine, 0, str(lin) + " " + str(size[1]) + " " + str(linesNeeded) + "  ", curses.A_UNDERLINE)
+                            else:
+                                stdscr.addstr(currentLine, 0, str(lin) + " " + str(size[1]) + " " + str(linesNeeded) + "  ")
 
                             # separate test if multiline as the linesNeeded above will be wrong
 
@@ -186,17 +205,14 @@ def main(stdscr):
                             linesNeeded += (displayNamestartingPos + maxDisplayName + 3 + len(buf)) / size[1]
                             buf = ""
 
-
-
-
-
-
-
                             currentLine -= linesNeeded
                             if currentLine - linesNeeded < 2:  # how many lines we want to reserve
                                 break
 
-                            stdscr.addstr(currentLine, 0, str(lin) + " " + str(size[1]) + " " + str(linesNeeded) + "  ")
+                            if currentLine == size[0] - 2:
+                                stdscr.addstr(currentLine, 0, str(lin) + " " + str(size[1]) + " " + str(linesNeeded) + "  ", curses.A_UNDERLINE)
+                            else:
+                                stdscr.addstr(currentLine, 0, str(lin) + " " + str(size[1]) + " " + str(linesNeeded) + "  ")
 
                             #for i in range(linesNeeded):
 
@@ -211,36 +227,81 @@ def main(stdscr):
                                 for i in range(linesNeeded):
                                     buf = rawText[:size[1] - pad]
                                     rawText = rawText[size[1] - pad:]
+                                    if currentLine + i == size[0] - 2:
+                                        stdscr.addstr(
+                                            currentLine + i, displayNamestartingPos +
+                                            maxDisplayName + 3, lineByLineText[i],
+                                            curses.A_BOLD + curses.A_UNDERLINE
+                                        )
+                                    else:
+                                        try:
+                                            stdscr.addstr(
+                                                currentLine + i, displayNamestartingPos +
+                                                maxDisplayName + 3, lineByLineText[i],
+                                                curses.A_BOLD
+                                            )
+                                        except:
+                                            e = sys.exc_info()[0]
+                                            print("Error: unable to start thread. " + str(e))
+                                            stdscr.addstr(1, 0, str(e))
+
+
+
+                            else:
+                                # TODO: need to split this out to get proper underline
+                                if currentLine == size[0] - 2:
                                     stdscr.addstr(
-                                        currentLine + i, displayNamestartingPos +
-                                        maxDisplayName + 3, lineByLineText[i],
+                                        currentLine, displayNamestartingPos +
+                                        maxDisplayName + 3, rawText,
+                                        curses.A_BOLD + curses.A_UNDERLINE
+                                    )
+                                else:
+                                    stdscr.addstr(
+                                        currentLine, displayNamestartingPos +
+                                        maxDisplayName + 3, rawText,
                                         curses.A_BOLD
                                     )
 
-                            else:
-                                stdscr.addstr(
-                                    currentLine, displayNamestartingPos +
-                                    maxDisplayName + 3, rawText,
-                                    curses.A_BOLD
-                                )
-
                             if length > maxDisplayName:
-                                stdscr.addstr(
-                                    currentLine, displayNamestartingPos, "<" +
-                                    str(event["user_id"][:maxDisplayName])
-                                )
-                                stdscr.addstr(
-                                    currentLine, displayNamestartingPos +
-                                    maxDisplayName - 2, "...> "
-                                )  # 3 minus the "<" char=2
+                                if currentLine == size[0] - 2:
+                                    stdscr.addstr(
+                                        currentLine, displayNamestartingPos, "<" +
+                                        str(event["user_id"][:maxDisplayName]),
+                                        curses.A_UNDERLINE
+                                    )
+                                    stdscr.addstr(
+                                        currentLine, displayNamestartingPos +
+                                        maxDisplayName - 2, "...> ",
+                                        curses.A_UNDERLINE
+                                    )  # 3 minus the "<" char=2
+                                else:
+                                    stdscr.addstr(
+                                        currentLine, displayNamestartingPos, "<" +
+                                        str(event["user_id"][:maxDisplayName])
+                                    )
+                                    stdscr.addstr(
+                                        currentLine, displayNamestartingPos +
+                                        maxDisplayName - 2, "...> "
+                                    )  # 3 minus the "<" char=2
                             else:
-                                stdscr.addstr(
-                                    currentLine, displayNamestartingPos +
-                                    maxDisplayName - length, "<" +
-                                    str(event["user_id"]) + "> "
-                                )
+                                if currentLine == size[0] - 2:
+                                    stdscr.addstr(
+                                        currentLine, displayNamestartingPos +
+                                        maxDisplayName - length, "<" +
+                                        str(event["user_id"]) + "> ",
+                                        curses.A_UNDERLINE
+                                    )
+                                else:
+                                    stdscr.addstr(
+                                        currentLine, displayNamestartingPos +
+                                        maxDisplayName - length, "<" +
+                                        str(event["user_id"]) + "> "
+                                    )
 
-                            stdscr.addstr(currentLine, 0, convertedDate)
+                            if currentLine == size[0] - 2:
+                                stdscr.addstr(currentLine, 0, convertedDate, curses.A_UNDERLINE)
+                            else:
+                                stdscr.addstr(currentLine, 0, convertedDate)
 
                             #if currentLine == size[1]:  # last line
                             #    stdscr.addstr(
@@ -268,32 +329,62 @@ def main(stdscr):
                                 buf = " has left"
 
                             if length > maxDisplayName:
-                                stdscr.addstr(
-                                    currentLine,
-                                    displayNamestartingPos + 1,
-                                    str(event["user_id"]),
-                                    curses.A_DIM
-                                )
-                                stdscr.addstr(
-                                    currentLine,
-                                    displayNamestartingPos + length + 1,
-                                    buf,
-                                    curses.A_DIM
-                            )
+                                if currentLine == size[0] - 2:
+                                    stdscr.addstr(
+                                        currentLine,
+                                        displayNamestartingPos + 1,
+                                        str(event["user_id"]),
+                                        curses.A_DIM + curses.A_UNDERLINE
+                                    )
+                                    stdscr.addstr(
+                                        currentLine,
+                                        displayNamestartingPos + length + 1,
+                                        buf,
+                                        curses.A_DIM + curses.A_UNDERLINE
+                                    )
+                                else:
+                                    stdscr.addstr(
+                                        currentLine,
+                                        displayNamestartingPos + 1,
+                                        str(event["user_id"]),
+                                        curses.A_DIM
+                                    )
+                                    stdscr.addstr(
+                                        currentLine,
+                                        displayNamestartingPos + length + 1,
+                                        buf,
+                                        curses.A_DIM
+                                    )
+
                             else:
-                                stdscr.addstr(
-                                    currentLine,
-                                    displayNamestartingPos + 1 +
-                                    maxDisplayName - length,
-                                    str(event["user_id"]),
-                                    curses.A_DIM
-                                )
-                                stdscr.addstr(
-                                    currentLine,
-                                    displayNamestartingPos + maxDisplayName + 1,
-                                    buf,
-                                    curses.A_DIM
-                                )
+                                if currentLine == size[0] - 2:
+                                    stdscr.addstr(
+                                        currentLine,
+                                        displayNamestartingPos + 1 +
+                                        maxDisplayName - length,
+                                        str(event["user_id"]),
+                                        curses.A_DIM + curses.A_UNDERLINE
+                                    )
+                                    stdscr.addstr(
+                                        currentLine,
+                                        displayNamestartingPos + maxDisplayName + 1,
+                                        buf,
+                                        curses.A_DIM + curses.A_UNDERLINE
+                                    )
+                                else:
+                                    stdscr.addstr(
+                                        currentLine,
+                                        displayNamestartingPos + 1 +
+                                        maxDisplayName - length,
+                                        str(event["user_id"]),
+                                        curses.A_DIM
+                                    )
+                                    stdscr.addstr(
+                                        currentLine,
+                                        displayNamestartingPos + maxDisplayName + 1,
+                                        buf,
+                                        curses.A_DIM
+                                    )
 
                     current -= 1
         if pause:
@@ -315,18 +406,45 @@ def main(stdscr):
                 "          ",
                 curses.A_REVERSE
             )
+        try:
+            stdscr.addstr(size[0] - 1, len(username) + 3, inputBuffer[-maxChars:])
+        except:
+            e = sys.exc_info()[0]
+            print("Error: unable to start thread. " + str(e))
+            stdscr.addstr(1, 0, str(e))
+
 
         stdscr.refresh()
 
+ #       getInput(stdscr)
+
+#def getInput(stdscr):
+ #   if True:
         try:
-            c = stdscr.getch()
+
+            c = stdscr.getch(size[0] - 1, len(username) + 3)
+            #c = stdscr.getkey(size[0] - 1, len(username) + 3)
+
+            #stri = stdscr.getstr(size[0] - 1, len(username) + 3, 10)
             if c == -1:
                 stdscr.addstr(1, 0, "timeout")
-            elif c == 9:
-                stdscr.addstr(1, 0, "%s was pressed\n" % c)
+            else:
+                if c <= 256 and c != 10 and c != 9: ## enter and tab
+                    inputBuffer += chr(c)
+
+            if c == 9:
+                #stdscr.addstr(1, 0, "%s was pressed\n" % c)
                 room = roomkeys[nextRoom]
                 nextRoom = (nextRoom + 1) % len(rooms)
-            elif c == ord("p"):
+            elif c == 10: # enter
+                rooms[room].send_text(inputBuffer)
+                inputBuffer = ""
+            elif c == curses.KEY_DC:
+                inputBuffer = ""
+            elif c == curses.KEY_BACKSPACE:
+                if len(inputBuffer) > 0:
+                    inputBuffer = inputBuffer[:-1]
+            elif c == curses.KEY_IC:
                 pause = not(pause)
                 if pause:
                     curses.nocbreak()
@@ -373,7 +491,7 @@ def main(stdscr):
                     stdscr.refresh()
                     curses.halfdelay(10)
                     stdscr.timeout(1)
-            elif c == ord("q"):
+            elif c == 27:
                 curses.endwin()
                 quit()
             elif c == ord("r"):
@@ -385,5 +503,7 @@ def main(stdscr):
 
         finally:
             do_nothing = True
+
+
 
 curses.wrapper(main)
