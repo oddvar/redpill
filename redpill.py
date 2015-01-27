@@ -125,9 +125,15 @@ def main(stdscr):
                             )
                         if "body" in event["content"]:
 
-                            rawText = event["content"]["body"]
-                            with open('debug.log', 'a') as the_file:
-                                the_file.write(rawText + "\n")
+                            rawText = event["content"]["body"].encode('utf-8')
+
+                            if event["content"]["msgtype"] == "m.emote":
+                                if len(rawText) > 0 and rawText[0] == " ":
+                                    rawText = rawText[1:]
+
+
+                            #with open('debug.log', 'a') as the_file:
+                            #    the_file.write(rawText.encode('utf8') + "\n")
 
                             linesNeeded = (displayNamestartingPos + maxDisplayName + 3 + len(rawText)) / size[1]
                             lin = (displayNamestartingPos + maxDisplayName + 3 + len(rawText))
@@ -227,6 +233,8 @@ def main(stdscr):
                                 for i in range(linesNeeded):
                                     buf = rawText[:size[1] - pad]
                                     rawText = rawText[size[1] - pad:]
+
+
                                     if currentLine + i == size[0] - 2:
                                         stdscr.addstr(
                                             currentLine + i, displayNamestartingPos +
@@ -262,40 +270,38 @@ def main(stdscr):
                                         curses.A_BOLD
                                     )
 
+                            usern = event["user_id"]
+
                             if length > maxDisplayName:
+                                usern = usern[:maxDisplayName - 3] + "..."
+
+                            if event["content"]["msgtype"] == "m.emote":
+
+                                usern = "* " + usern
                                 if currentLine == size[0] - 2:
                                     stdscr.addstr(
-                                        currentLine, displayNamestartingPos, "<" +
-                                        str(event["user_id"][:maxDisplayName]),
-                                        curses.A_UNDERLINE
+                                        currentLine, displayNamestartingPos + max(0,  maxDisplayName - length),
+                                        str(usern),
+                                        curses.A_UNDERLINE + curses.A_BOLD
                                     )
-                                    stdscr.addstr(
-                                        currentLine, displayNamestartingPos +
-                                        maxDisplayName - 2, "...> ",
-                                        curses.A_UNDERLINE
-                                    )  # 3 minus the "<" char=2
                                 else:
                                     stdscr.addstr(
-                                        currentLine, displayNamestartingPos, "<" +
-                                        str(event["user_id"][:maxDisplayName])
+                                        currentLine, displayNamestartingPos + max(0,  maxDisplayName - length),
+                                        str(usern),
+                                        curses.A_BOLD
                                     )
-                                    stdscr.addstr(
-                                        currentLine, displayNamestartingPos +
-                                        maxDisplayName - 2, "...> "
-                                    )  # 3 minus the "<" char=2
                             else:
+                                usern = "<" + usern + ">"
                                 if currentLine == size[0] - 2:
                                     stdscr.addstr(
-                                        currentLine, displayNamestartingPos +
-                                        maxDisplayName - length, "<" +
-                                        str(event["user_id"]) + "> ",
+                                        currentLine, displayNamestartingPos + max(0,  maxDisplayName - length),
+                                        str(usern),
                                         curses.A_UNDERLINE
                                     )
                                 else:
                                     stdscr.addstr(
-                                        currentLine, displayNamestartingPos +
-                                        maxDisplayName - length, "<" +
-                                        str(event["user_id"]) + "> "
+                                        currentLine, displayNamestartingPos + max(0,  maxDisplayName - length),
+                                        str(usern)
                                     )
 
                             if currentLine == size[0] - 2:
@@ -437,7 +443,10 @@ def main(stdscr):
                 room = roomkeys[nextRoom]
                 nextRoom = (nextRoom + 1) % len(rooms)
             elif c == 10: # enter
-                rooms[room].send_text(inputBuffer)
+                if inputBuffer.startswith("/me"):
+                    rooms[room].send_emote(inputBuffer[3:])
+                else:
+                    rooms[room].send_text(inputBuffer)
                 inputBuffer = ""
             elif c == curses.KEY_DC:
                 inputBuffer = ""
