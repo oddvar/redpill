@@ -6,7 +6,7 @@ import json
 import time
 import datetime
 import curses
-from matrix_client.client import MatrixClient
+from matrix_client.client import MatrixClient, Room
 
 
 def loadCredentials(filename):
@@ -21,14 +21,60 @@ def loadCredentials(filename):
 
 
 def processMessage(obj):
-    global room
+    global room, all_rooms, rooms, lastEventRoom
 
-    if "room_id" in obj:
+    with open('event.log', 'a') as the_file:
+        the_file.write(str(obj) + "\n")
+
+
+    if "room_id" in obj and room != all_rooms:
+
         room = obj["room_id"]
+
+    if "room_id" in obj and False:
+        #rooms[all_rooms].events.append(
+        obj2 = {
+                "origin_server_ts": obj["origin_server_ts"],
+                "event_id": "",
+                "age": "",
+                "content": {
+                    "body": obj["room_id"],
+                    "msgtype": "m.text"
+                },
+                "room_id": obj["room_id"],
+                "user_id": " ",
+                "type" : "m.room.message",
+            }
+
+
+        #rooms[all_rooms].events.append(            {u'origin_server_ts': 1422443849044, u'event_id': u'$1422443849125hkoiO:matrix.org', u'age': 771, u'content': {u'body': u'zing', u'msgtype': u'm.text'}, u'room_id': u'!pDoZaoxgqWkenMFAyE:matrix.org', u'user_id': u'@oddvar:matrix.org', u'type': u'm.room.message'})
+
+        with open('event.log', 'a') as the_file:
+            the_file.write(str(obj2) + "\n")
+        #rooms[all_rooms].events.append(obj2)
+    if ("room_id" in obj and obj["room_id"] != lastEventRoom and "type" in obj and
+                obj["type"] != "m.presence" and obj["type"] != "m.typing" and obj["type"] != "m.room.topic"
+                and obj["type"] != "m.room.name"):
+        lastEventRoom = obj["room_id"]
+        obj2 = {}
+        obj2["type"] = "m.roomchange"
+        obj2["user_id"] = " "
+        obj2["content"] = {}
+        obj2["content"]["body"] = obj["room_id"]
+        obj2["room_id"] = obj["room_id"]
+        obj2["content"]["msgtype"] = "m.text"
+        rooms[all_rooms].events.append(obj2)
+    rooms[all_rooms].events.append(obj)
+
+def getFirstRoomAlias(r):
+    name = r.room_id
+    if len(r.aliases) > 0:
+        name = r.aliases[0]
+    return name.encode('utf-8')
 
 
 def main(stdscr):
-    global size, room, data, rooms, access_token, endTime, incrementalTextOffset
+    global size, room, data, rooms, access_token, endTime, rooms, all_rooms, lastEventRoom
 
     curses.curs_set(0)
     curses.use_default_colors()
@@ -45,8 +91,13 @@ def main(stdscr):
         size[0])
 
     rooms = client.get_rooms()
+
+    all_rooms = "all rooms"
+    rooms[all_rooms] = Room(client, all_rooms)
+
+    rooms[all_rooms].events = []
     roomkeys = list(rooms.keys())
-    room = roomkeys[0]
+    room = roomkeys[1] # "all_rooms"
     nextRoom = 1
     endTime = client.end
 
@@ -62,6 +113,7 @@ def main(stdscr):
     curses.echo()
     stdscr.keypad(True)
     inputBuffer = ""
+    lastEventRoom = "room"
 
 
     while(True):
@@ -69,11 +121,28 @@ def main(stdscr):
         maxChars = size[1] - 1 - len(username) - 3
 
         stdscr.clear()
+
+        # we want NAME aka ALIAS[0] (ROOM_ID)
+        # or 2nd choice: ALIAS[0] (ROOM_ID)
+        # or fallback: ROOM_ID
+        line = str(room)
+
+        if line == all_rooms:
+            pass
+        elif rooms[room].name is None:
+            if len(rooms[room].aliases) > 0 and rooms[room].aliases[0] != room:
+                line = rooms[room].aliases[0] + " (" + line + ")"
+        else:
+            if len(rooms[room].aliases) > 0 and rooms[room].aliases[0] != room:
+                line = rooms[room].name + " aka " + getFirstRoomAlias(rooms[room]) + " (" + line + ")"
+            else:
+                if rooms[room].name != room:
+                    line = rooms[room].name + " (" + line + ")"
+
         stdscr.addstr(
             0, 0, (
-                "redpill v0.6 · screen size: " + str(size) + " · chat size: "
-                + str(len(rooms[room].events)) + " · room: " +
-                str(room)
+                "redpill v0.7 · screen size: " + str(size) + " · chat size: "
+                + str(len(rooms[room].events)) + " · room: " + str(line)
             ), curses.A_UNDERLINE
         )
 
@@ -84,7 +153,6 @@ def main(stdscr):
             if current >= 0:
 
                 # TODO: something when the first event is a typing event
-#reversed
                 currentLine = size[0] - 1
 
                 # input
@@ -96,12 +164,21 @@ def main(stdscr):
                 stdscr.addstr(currentLine - 1, 0, space, curses.A_UNDERLINE)
 
                 for event in reversed(rooms[room].events):
-                    #stdscr.clear()
-                    #stdscr.addstr(1, 0, str(event))
-                    #stdscr.refresh()
                     if event["type"] == "m.typing":
                     #if True:
-                        pass  # do something clever
+                        continue  # do something clever
+                    elif event["type"] == "m.presence":
+                    #if True:
+                        continue  # do something clever
+
+                    elif event["type"] == "m.roomchange":
+                        room_id = event["room_id"]
+                        lin = (str(rooms[room_id].name) + " aka " + getFirstRoomAlias(rooms[room_id]) + " (" +
+                            rooms[room_id].room_id + ")")
+                        currentLine -= 1
+                        stdscr.addstr(currentLine, 0, "Event(s) from " + lin, curses.A_DIM)
+
+
                     else:
                         #currentLine = size[0] - y
                         currentLine -= 1
@@ -131,22 +208,16 @@ def main(stdscr):
                                 if len(rawText) > 0 and rawText[0] == " ":
                                     rawText = rawText[1:]
 
-
-                            #with open('debug.log', 'a') as the_file:
-                            #    the_file.write(rawText.encode('utf8') + "\n")
-
                             linesNeeded = (displayNamestartingPos + maxDisplayName + 3 + len(rawText)) / size[1]
                             lin = (displayNamestartingPos + maxDisplayName + 3 + len(rawText))
 
-                            if currentLine == size[0] - 2:
-                                stdscr.addstr(currentLine, 0, str(lin) + " " + str(size[1]) + " " + str(linesNeeded) + "  ", curses.A_UNDERLINE)
-                            else:
-                                stdscr.addstr(currentLine, 0, str(lin) + " " + str(size[1]) + " " + str(linesNeeded) + "  ")
+                            #if currentLine == size[0] - 2:
+                            #    stdscr.addstr(currentLine, 0, str(lin) + " " + str(size[1]) + " " + str(linesNeeded) + "  ", curses.A_UNDERLINE)
+                            #else:
+                            #    stdscr.addstr(currentLine, 0, str(lin) + " " + str(size[1]) + " " + str(linesNeeded) + "  ")
 
-                            # separate test if multiline as the linesNeeded above will be wrong
 
-                            pattern = re.compile(r'\n\$,')
-                            #if pattern.findall(rawText):
+
                             linesNeeded = 0
 
                             buf = ""
