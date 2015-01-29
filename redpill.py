@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# encoding=utf8
 
 import re
 import sys
@@ -7,7 +8,9 @@ import time
 import datetime
 import curses
 from matrix_client.client import MatrixClient, Room
-
+import sys
+reload(sys)
+sys.setdefaultencoding('utf8')
 
 def loadCredentials(filename):
     global password, username, server
@@ -139,6 +142,10 @@ def main(stdscr):
                 if rooms[room].name != room:
                     line = rooms[room].name + " (" + line + ")"
 
+        #line.encode("utf-8")
+        if rooms[room].topic is not None:
+            line += " · topic: " + rooms[room].topic
+
         stdscr.addstr(
             0, 0, (
                 "redpill v0.7 · screen size: " + str(size) + " · chat size: "
@@ -173,10 +180,26 @@ def main(stdscr):
 
                     elif event["type"] == "m.roomchange":
                         room_id = event["room_id"]
-                        lin = (str(rooms[room_id].name) + " aka " + getFirstRoomAlias(rooms[room_id]) + " (" +
-                            rooms[room_id].room_id + ")")
+                        #lin = (str(rooms[room_id].name) + " aka " + getFirstRoomAlias(rooms[room_id]) + " (" +
+                        #    rooms[room_id].room_id + ")")
+                        line = str(room_id)
+                        if line == all_rooms:
+                            pass
+                        elif rooms[room_id].name is None:
+                            if len(rooms[room_id].aliases) > 0 and rooms[room_id].aliases[0] != room_id:
+                                line = rooms[room_id].aliases[0] + " (" + line + ")"
+                        else:
+                            if len(rooms[room_id].aliases) > 0 and rooms[room_id].aliases[0] != room_id:
+                                line = rooms[room_id].name + " aka " + getFirstRoomAlias(rooms[room_id]) + " (" + line + ")"
+                            else:
+                                if rooms[room_id].name != room_id:
+                                    line = rooms[room_id].name + " (" + line + ")"
+
+                        #if rooms[room].topic is not None:
+                        #    line += " · topic: " + rooms[room].topic
+
                         currentLine -= 1
-                        stdscr.addstr(currentLine, 0, "Event(s) from " + lin, curses.A_DIM)
+                        stdscr.addstr(currentLine, 0, "Event(s) from " + line, curses.A_DIM)
 
 
                     else:
@@ -574,9 +597,7 @@ def main(stdscr):
             elif c == 27:
                 curses.endwin()
                 quit()
-            elif c == ord("r"):
-                rooms = client.get_rooms()
-            elif c == ord("c"):
+            elif c == curses.KEY_F2:
                 PAD_COMMENTS = not PAD_COMMENTS
 
             stdscr.addstr(2, 0, "time() == %s\n" % time.time())
