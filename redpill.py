@@ -116,8 +116,8 @@ def main(stdscr):
     curses.echo()
     stdscr.keypad(True)
     inputBuffer = ""
-    lastEventRoom = "room"
-
+    lastEventRoom = all_rooms
+    the_room_to_post_to = None  # store the last room we saw before we started typing
 
     while(True):
         size = stdscr.getmaxyx()
@@ -149,7 +149,8 @@ def main(stdscr):
         stdscr.addstr(
             0, 0, (
                 "redpill v0.7 · screen size: " + str(size) + " · chat size: "
-                + str(len(rooms[room].events)) + " · room: " + str(line)
+                + str(len(rooms[room].events)) + " · room: " + str(line) + " the variables: room: " + room + " last: "
+                + lastEventRoom
             ), curses.A_UNDERLINE
         )
 
@@ -182,10 +183,10 @@ def main(stdscr):
                         room_id = event["room_id"]
                         #lin = (str(rooms[room_id].name) + " aka " + getFirstRoomAlias(rooms[room_id]) + " (" +
                         #    rooms[room_id].room_id + ")")
-                        line = str(room_id)
+                        line = room_id
                         if line == all_rooms:
                             pass
-                        elif rooms[room_id].name is None:
+                        elif rooms[line].name is None:
                             if len(rooms[room_id].aliases) > 0 and rooms[room_id].aliases[0] != room_id:
                                 line = rooms[room_id].aliases[0] + " (" + line + ")"
                         else:
@@ -206,7 +207,7 @@ def main(stdscr):
                         #currentLine = size[0] - y
                         currentLine -= 1
 
-                        if currentLine < 2:  # how many lines we want to reserve
+                        if currentLine < 3:  # how many lines we want to reserve
                             break
                         #if currentLine == 5:
                         #    currentLine -= 1
@@ -513,7 +514,6 @@ def main(stdscr):
             print("Error: unable to start thread. " + str(e))
             stdscr.addstr(1, 0, str(e))
 
-
         stdscr.refresh()
 
  #       getInput(stdscr)
@@ -531,22 +531,37 @@ def main(stdscr):
             else:
                 if c <= 256 and c != 10 and c != 9: ## enter and tab
                     inputBuffer += chr(c)
+                if len(inputBuffer) == 1:  # e.g. just started typing
+                    the_room_to_post_to = lastEventRoom
 
             if c == 9:
                 #stdscr.addstr(1, 0, "%s was pressed\n" % c)
                 room = roomkeys[nextRoom]
                 nextRoom = (nextRoom + 1) % len(rooms)
+                the_room_to_post_to = None
             elif c == 10: # enter
-                if inputBuffer.startswith("/me"):
-                    rooms[room].send_emote(inputBuffer[3:])
+                if room == all_rooms:
+                    if the_room_to_post_to is None:
+                        the_room_to_post_to = lastEventRoom
+                    if inputBuffer.startswith("/me"):
+                        rooms[the_room_to_post_to].send_emote(inputBuffer[3:])
+                    else:
+                        rooms[the_room_to_post_to].send_text(inputBuffer)
                 else:
-                    rooms[room].send_text(inputBuffer)
+                    if inputBuffer.startswith("/me"):
+                        rooms[room].send_emote(inputBuffer[3:])
+                    else:
+                        rooms[room].send_text(inputBuffer)
                 inputBuffer = ""
+                the_room_to_post_to = None
             elif c == curses.KEY_DC:
                 inputBuffer = ""
+                the_room_to_post_to = None
             elif c == curses.KEY_BACKSPACE:
                 if len(inputBuffer) > 0:
                     inputBuffer = inputBuffer[:-1]
+                if len(inputBuffer) == 0:
+                    the_room_to_post_to = None
             elif c == curses.KEY_IC:
                 pause = not(pause)
                 if pause:
@@ -600,7 +615,7 @@ def main(stdscr):
             elif c == curses.KEY_F2:
                 PAD_COMMENTS = not PAD_COMMENTS
 
-            stdscr.addstr(2, 0, "time() == %s\n" % time.time())
+            #stdscr.addstr(2, 0, "time() == %s\n" % time.time())
 
         finally:
             do_nothing = True
