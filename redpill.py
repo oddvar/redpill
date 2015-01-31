@@ -12,6 +12,9 @@ import sys
 reload(sys)
 sys.setdefaultencoding('utf8')
 
+import requests
+requests.packages.urllib3.disable_warnings()
+
 def loadCredentials(filename):
     global password, username, server
     json_data = open(filename)
@@ -24,7 +27,7 @@ def loadCredentials(filename):
 
 
 def processMessage(obj):
-    global room, all_rooms, rooms, lastEventRoom
+    global room, rooms, lastEventRoom, room_keys
 
     with open('event.log', 'a') as the_file:
         the_file.write(str(obj) + "\n")
@@ -34,27 +37,10 @@ def processMessage(obj):
 
         room = obj["room_id"]
 
-    if "room_id" in obj and False:
-        #rooms[all_rooms].events.append(
-        obj2 = {
-                "origin_server_ts": obj["origin_server_ts"],
-                "event_id": "",
-                "age": "",
-                "content": {
-                    "body": obj["room_id"],
-                    "msgtype": "m.text"
-                },
-                "room_id": obj["room_id"],
-                "user_id": " ",
-                "type" : "m.room.message",
-            }
+    if "room_id" not in rooms:
+        room_keys.append(obj["room_id"])
 
 
-        #rooms[all_rooms].events.append(            {u'origin_server_ts': 1422443849044, u'event_id': u'$1422443849125hkoiO:matrix.org', u'age': 771, u'content': {u'body': u'zing', u'msgtype': u'm.text'}, u'room_id': u'!pDoZaoxgqWkenMFAyE:matrix.org', u'user_id': u'@oddvar:matrix.org', u'type': u'm.room.message'})
-
-        with open('event.log', 'a') as the_file:
-            the_file.write(str(obj2) + "\n")
-        #rooms[all_rooms].events.append(obj2)
     if ("room_id" in obj and obj["room_id"] != lastEventRoom and "type" in obj and
                 obj["type"] != "m.presence" and obj["type"] != "m.typing" and obj["type"] != "m.room.topic"
                 and obj["type"] != "m.room.name"):
@@ -73,11 +59,11 @@ def getFirstRoomAlias(r):
     name = r.room_id
     if len(r.aliases) > 0:
         name = r.aliases[0]
-    return name.encode('utf-8')
+    return name  #.encode('utf-8')
 
 
 def main(stdscr):
-    global size, room, data, rooms, access_token, endTime, rooms, all_rooms, lastEventRoom
+    global size, room, data, rooms, access_token, endTime, rooms, all_rooms, lastEventRoom, room_keys
 
     curses.curs_set(0)
     curses.use_default_colors()
@@ -99,8 +85,8 @@ def main(stdscr):
     rooms[all_rooms] = Room(client, all_rooms)
 
     rooms[all_rooms].events = []
-    roomkeys = list(rooms.keys())
-    room = roomkeys[1] # "all_rooms"
+    room_keys = list(rooms.keys())
+    room = all_rooms  #room_keys[1] # "all_rooms"
     nextRoom = 1
     endTime = client.end
 
@@ -534,11 +520,39 @@ def main(stdscr):
 
             if c == 9:
                 #stdscr.addstr(1, 0, "%s was pressed\n" % c)
-                room = roomkeys[nextRoom]
+                room = room_keys[nextRoom]
                 nextRoom = (nextRoom + 1) % len(rooms)
             elif c == 10: # enter
                 if inputBuffer.startswith("/me"):
                     rooms[room].send_emote(inputBuffer[3:])
+                elif inputBuffer.startswith("/invite"):
+                    user_id = inputBuffer[7:].lstrip(" ").rstrip(" ")  # todo: better way? strip() ? also refactor
+                    rooms[room].invite(user_id)
+                elif inputBuffer.startswith("/kick"):
+                    user_id = inputBuffer[5:].lstrip(" ").rstrip(" ")  # todo: better way? strip() ?
+                    rooms[room].kick(user_id)
+                elif inputBuffer.startswith("/power"):
+                    user_id = inputBuffer[7:].lstrip(" ").rstrip(" ")  # todo: better way? strip() ?
+                    power_level = 50
+                    rooms[room].set_power_level(user_id, power_level)
+                elif inputBuffer.startswith("/op"):
+                    user_id = inputBuffer[2:].lstrip(" ").rstrip(" ")  # todo: better way? strip() ?
+                    rooms[room].set_power_level(user_id)
+                elif inputBuffer.startswith("/ban"): # reason
+                    user_id = inputBuffer[4:].lstrip(" ").rstrip(" ")  # todo: better way? strip() ?
+                    reason = "sux" #FIXME
+                    rooms[room].ban(user_id, reason)
+                elif inputBuffer.startswith("/join"):   # there's a /join that supports aliases
+                    room_alias = inputBuffer[5:].lstrip(" ").rstrip(" ")
+                    client.join_room(room_alias)
+                elif inputBuffer.startswith("/leave"):
+                    rooms[room].leave_room(room_id)
+                elif inputBuffer.startswith("/create"): # create a new room
+                    is_public = True
+                    invitees = ()
+                    #     def create_room(self, alias=None, is_public=False, invitees=()):
+                    room_alias = inputBuffer[7:].lstrip(" ").rstrip(" ")  # todo: better way? strip() ?
+                    client.create_room(room_alias, is_public, invitees)
                 else:
                     rooms[room].send_text(inputBuffer)
                 inputBuffer = ""
@@ -594,13 +608,13 @@ def main(stdscr):
                     stdscr.refresh()
                     curses.halfdelay(10)
                     stdscr.timeout(1)
-            elif c == 27:
+            elif c == 27:  # need to test for alt combo or ESC
                 curses.endwin()
                 quit()
             elif c == curses.KEY_F2:
                 PAD_COMMENTS = not PAD_COMMENTS
 
-            stdscr.addstr(2, 0, "time() == %s\n" % time.time())
+            #stdscr.addstr(2, 0, "time() == %s\n" % time.time())
 
         finally:
             do_nothing = True
