@@ -563,11 +563,11 @@ def main(stdscr):
                   #      rooms[the_room_to_post_to].send_emote(inputBuffer[3:])
                  #   else:
                    #     rooms[the_room_to_post_to].send_text(inputBuffer)
-                #else:
-               #     if inputBuffer.startswith("/me"):
-               #         rooms[room].send_emote(inputBuffer[3:])
                 else:
-                   rooms[room].send_text(inputBuffer)
+                    if inputBuffer.startswith("/me"):
+                       rooms[room].send_emote(inputBuffer[3:])
+                    else:
+                        rooms[room].send_text(inputBuffer)
                 inputBuffer = ""
                 the_room_to_post_to = None
             elif c == curses.KEY_DC:
