@@ -12,8 +12,10 @@ import sys
 reload(sys)
 sys.setdefaultencoding('utf8')
 
-import requests
-requests.packages.urllib3.disable_warnings()
+#import requests
+#if "packages" in requests:
+#from requests import requests
+#requests.packages.urllib3.disable_warnings()
 
 def loadCredentials(filename):
     global password, username, server
@@ -33,12 +35,12 @@ def processMessage(obj):
         the_file.write(str(obj) + "\n")
 
 
-    if "room_id" in obj and room != all_rooms:
+    if "room_id" in obj:
+        if room != all_rooms:
+            room = obj["room_id"]
 
-        room = obj["room_id"]
-
-    if "room_id" not in rooms:
-        room_keys.append(obj["room_id"])
+        if "room_id" not in rooms:
+            room_keys.append(obj["room_id"])
 
 
     if ("room_id" in obj and obj["room_id"] != lastEventRoom and "type" in obj and
@@ -62,7 +64,7 @@ def getFirstRoomAlias(r):
     return name  #.encode('utf-8')
 
 
-def main(stdscr):
+def start(stdscr):
     global size, room, data, rooms, access_token, endTime, rooms, all_rooms, lastEventRoom, room_keys
 
     curses.curs_set(0)
@@ -518,7 +520,8 @@ def main(stdscr):
                 if c <= 256 and c != 10 and c != 9: ## enter and tab
                     inputBuffer += chr(c)
                 if len(inputBuffer) == 1:  # e.g. just started typing
-                    the_room_to_post_to = lastEventRoom
+                    if lastEventRoom != all_rooms:
+                        the_room_to_post_to = lastEventRoom
 
             if c == 9:
                 #stdscr.addstr(1, 0, "%s was pressed\n" % c)
@@ -526,27 +529,36 @@ def main(stdscr):
                 nextRoom = (nextRoom + 1) % len(rooms)
                 the_room_to_post_to = None
             elif c == 10: # enter
-                if inputBuffer.startswith("/me"):
-                    rooms[room].send_emote(inputBuffer[3:])
-                elif inputBuffer.startswith("/invite"):
-                    user_id = inputBuffer[7:].lstrip(" ").rstrip(" ")  # todo: better way? strip() ? also refactor
-                    rooms[room].invite(user_id)
+                with open('sends.log', 'a') as the_file:
+                    the_file.write("the_room_to_post_to:" + str(the_room_to_post_to) + "\n")
+                    the_file.write("lastEventRoom: " + str(lastEventRoom) + "\n")
+                    the_file.write("room: " + str(room) + "\n")
+                    the_file.write("inputBuffer: " + str(inputBuffer) + "\n")
+                    the_file.write("---\n")
+
+                if inputBuffer.startswith("/invite"):
+                    user_id = inputBuffer[7:].strip()
+                    rooms[room].invite_user(user_id)
                 elif inputBuffer.startswith("/kick"):
-                    user_id = inputBuffer[5:].lstrip(" ").rstrip(" ")  # todo: better way? strip() ?
-                    rooms[room].kick(user_id)
+                    user_id = inputBuffer[5:].strip()
+                    with open('sends.log', 'a') as the_file:
+                        the_file.write("KICKING user:'" + str(user_id) + "'\n")
+                        the_file.write("from room:'" + str(room) + "'\n")
+                        the_file.write("-----\n")
+                    rooms[room].kick_user(user_id)
                 elif inputBuffer.startswith("/power"):
-                    user_id = inputBuffer[7:].lstrip(" ").rstrip(" ")  # todo: better way? strip() ?
+                    user_id = inputBuffer[7:].strip()
                     power_level = 50
                     rooms[room].set_power_level(user_id, power_level)
                 elif inputBuffer.startswith("/op"):
-                    user_id = inputBuffer[2:].lstrip(" ").rstrip(" ")  # todo: better way? strip() ?
+                    user_id = inputBuffer[2:].strip()
                     rooms[room].set_power_level(user_id)
                 elif inputBuffer.startswith("/ban"): # reason
-                    user_id = inputBuffer[4:].lstrip(" ").rstrip(" ")  # todo: better way? strip() ?
+                    user_id = inputBuffer[4:].strip()
                     reason = "sux" #FIXME
                     rooms[room].ban(user_id, reason)
                 elif inputBuffer.startswith("/join"):   # there's a /join that supports aliases
-                    room_alias = inputBuffer[5:].lstrip(" ").rstrip(" ")
+                    room_alias = inputBuffer[5:].strip()
                     client.join_room(room_alias)
                 elif inputBuffer.startswith("/leave"):
                     rooms[room].leave_room(room_id)
@@ -554,20 +566,32 @@ def main(stdscr):
                     is_public = True
                     invitees = ()
                     #     def create_room(self, alias=None, is_public=False, invitees=()):
-                    room_alias = inputBuffer[7:].lstrip(" ").rstrip(" ")  # todo: better way? strip() ?
+                    room_alias = inputBuffer[7:].strip()
                     client.create_room(room_alias, is_public, invitees)
-               # £if room == all_rooms:
-                #    if the_room_to_post_to is None:
-                # 3       the_room_to_post_to = lastEventRoom
-                  #  if inputBuffer.startswith("/me"):
-                  #      rooms[the_room_to_post_to].send_emote(inputBuffer[3:])
-                 #   else:
-                   #     rooms[the_room_to_post_to].send_text(inputBuffer)
-                else:
-                    if inputBuffer.startswith("/me"):
-                       rooms[room].send_emote(inputBuffer[3:])
+                elif inputBuffer.startswith("/topic"):   # get or set topic
+                    new_topic = inputBuffer[6:].strip()
+                    if len(new_topic) > 0:
+                        rooms[room].topic = new_topic
                     else:
-                        rooms[room].send_text(inputBuffer)
+                        rooms[room].topic = "trumped"
+                else:
+                    if room == all_rooms:
+                        if the_room_to_post_to is None:
+                            if lastEventRoom != all_rooms:
+                                the_room_to_post_to = lastEventRoom
+                            else:
+                                stdscr.addstr(1, 0, "No idea what room to post to!")
+                                stdscr.refresh()
+                                inputBuffer = "No idea what room to post to!"
+                                continue
+                    else:
+                        the_room_to_post_to = room
+
+                    if inputBuffer.startswith("/me"):
+                        rooms[the_room_to_post_to].send_emote(inputBuffer[3:])
+                    else:
+                        rooms[the_room_to_post_to].send_text(inputBuffer)
+
                 inputBuffer = ""
                 the_room_to_post_to = None
             elif c == curses.KEY_DC:
@@ -626,6 +650,10 @@ def main(stdscr):
                     curses.halfdelay(10)
                     stdscr.timeout(1)
             elif c == 27:  # need to test for alt combo or ESC
+                curses.cbreak()
+                curses.echo()
+                #curses.curs_set(1)
+                stdscr.keypad(0)
                 curses.endwin()
                 quit()
             elif c == curses.KEY_F2:
@@ -637,5 +665,31 @@ def main(stdscr):
             do_nothing = True
 
 
+if __name__ == "__main__":
+    try:
 
-curses.wrapper(main)
+        #curses.wrapper(main)
+        main_screen = curses.initscr()
+        curses.noecho()
+        curses.cbreak()
+        main_screen.keypad(1)
+        curses.start_color()
+
+        start(main_screen)
+
+    except curses.error:
+        curses.nocbreak()
+        main_screen.keypad(0)
+        curses.echo()
+        curses.endwin()
+    except KeyError:
+        curses.nocbreak()
+        main_screen.keypad(0)
+        curses.echo()
+        curses.endwin()
+    finally:
+        curses.nocbreak()
+        main_screen.keypad(0)
+        curses.echo()
+        curses.endwin()
+
