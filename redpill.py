@@ -541,11 +541,8 @@ def start(stdscr):
                     rooms[room].invite_user(user_id)
                 elif inputBuffer.startswith("/kick"):
                     user_id = inputBuffer[5:].strip()
-                    with open('sends.log', 'a') as the_file:
-                        the_file.write("KICKING user:'" + str(user_id) + "'\n")
-                        the_file.write("from room:'" + str(room) + "'\n")
-                        the_file.write("-----\n")
-                    rooms[room].kick_user(user_id)
+                    reason = "no reason..."
+                    rooms[room].kick_user(user_id, reason)
                 elif inputBuffer.startswith("/power"):
                     user_id = inputBuffer[7:].strip()
                     power_level = 50
@@ -560,6 +557,9 @@ def start(stdscr):
                 elif inputBuffer.startswith("/join"):   # there's a /join that supports aliases
                     room_alias = inputBuffer[5:].strip()
                     client.join_room(room_alias)
+                elif inputBuffer.startswith("/j"):
+                    room_alias = inputBuffer[2:].strip()
+                    client.join_room(room_alias)
                 elif inputBuffer.startswith("/leave"):
                     rooms[room].leave_room(room_id)
                 elif inputBuffer.startswith("/create"): # create a new room
@@ -573,7 +573,8 @@ def start(stdscr):
                     if len(new_topic) > 0:
                         rooms[room].topic = new_topic
                     else:
-                        rooms[room].topic = "trumped"
+                        pass
+                        #rooms[room].topic = "fail"
                 else:
                     if room == all_rooms:
                         if the_room_to_post_to is None:
